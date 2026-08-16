@@ -6,6 +6,7 @@ import de.fiereu.openmmo.common.enums.Region
 import de.fiereu.openmmo.story.generated.hoenn.HoennFlags
 import de.fiereu.openmmo.story.generated.hoenn.HoennVars
 import de.fiereu.openmmo.story.generated.kanto.KantoFlags
+import de.fiereu.openmmo.common.enums.GameMode
 
 /**
  * Where a fresh character starts and the story state its source game would already have set. Every
@@ -24,10 +25,12 @@ internal data class NewGameStart(
 
 internal object NewGameStarts {
 
-  fun forRegion(region: Region, female: Boolean): NewGameStart =
+  fun forRegion(region: Region, female: Boolean, gameMode: GameMode = GameMode.REMAKE): NewGameStart =
       when (region) {
         Region.HOENN -> hoenn(female)
-        Region.KANTO -> kanto()
+        Region.KANTO -> if (GameMode.isClassic(gameMode)) kantoClassic(gameMode) else kanto()
+        Region.JOHTO -> johto()
+        Region.GALAR -> galar()
       }
 
   /** Emerald opens in the moving truck, whose exit goes through the player's dynamic warp. */
@@ -69,5 +72,37 @@ internal object NewGameStarts {
           x = 6,
           y = 6,
           storyFlags = KantoFlags.initiallySet,
+      )
+
+  // Classic Kanto (Red/Blue or Yellow) — same map geometry as FireRed but different game mode var.
+  // Yellow mode: FLAG_PIKACHU_STARTER applied by ClassicModeService after character creation.
+  private fun kantoClassic(mode: GameMode): NewGameStart =
+      NewGameStart(
+          bankId = 4,
+          mapId = 1,
+          x = 6,
+          y = 6,
+          storyFlags = KantoFlags.initiallySet,
+          storyVars = mapOf(GameMode.VAR_KEY to mode.ordinal),
+      )
+
+  // HeartGold/SoulSilver: New Bark Town player's room.
+  // bankId/mapId are placeholders — update once Johto map data is integrated.
+  private fun johto(): NewGameStart =
+      NewGameStart(
+          bankId = 100,
+          mapId = 1,
+          x = 5,
+          y = 5,
+      )
+
+  // Galar: Postwick player's room (Sword/Shield via pokesword bridge).
+  private fun galar(): NewGameStart =
+      NewGameStart(
+          bankId = 200,
+          mapId = 1,
+          x = 4,
+          y = 6,
+          storyVars = mapOf(GameMode.VAR_KEY to GameMode.MODERN_SWORD.ordinal),
       )
 }

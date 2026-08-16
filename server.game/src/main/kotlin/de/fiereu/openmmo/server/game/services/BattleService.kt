@@ -18,6 +18,7 @@ import de.fiereu.openmmo.net.game.packets.battle.BattleListEventPacket
 import de.fiereu.openmmo.net.game.packets.battle.moves.MoveLearnPromptPacket
 import de.fiereu.openmmo.net.game.packets.battle.moves.MoveLearnReplyPacket
 import de.fiereu.openmmo.pokemon.SpeciesRegistry
+import de.fiereu.openmmo.common.enums.GameMode
 import de.fiereu.openmmo.server.game.battle.BattleInstance
 import de.fiereu.openmmo.server.game.battle.BattleMonState
 import de.fiereu.openmmo.server.game.battle.BattlePacketEmitter
@@ -26,11 +27,13 @@ import de.fiereu.openmmo.server.game.battle.BattleResult
 import de.fiereu.openmmo.server.game.battle.BattleRewards
 import de.fiereu.openmmo.server.game.battle.BattleRng
 import de.fiereu.openmmo.server.game.battle.BattleRules
+import de.fiereu.openmmo.server.game.battle.Gen1StatCalculator
 import de.fiereu.openmmo.server.game.battle.MoveLearner
 import de.fiereu.openmmo.server.game.battle.StatCalculator
 import de.fiereu.openmmo.server.game.battle.TurnEngine
 import de.fiereu.openmmo.server.game.battle.WildMonFactory
 import de.fiereu.openmmo.server.game.battle.acquiredMonsterDelta
+import de.fiereu.openmmo.server.game.services.ClassicModeService
 import de.fiereu.openmmo.server.game.session.PLAYER_STATE
 import de.fiereu.openmmo.server.game.storage.CharacterStore
 import de.fiereu.openmmo.server.game.world.interest.InterestManager
@@ -75,9 +78,19 @@ constructor(
     private val moveRegistry: MoveRegistry,
     private val trainers: TrainerRegistry,
     private val items: ItemRegistry,
+    private val classicMode: ClassicModeService,
 ) {
 
   private val pokeBallItemId: Short by lazy { items.idOf(Items.POKE_BALL).toShort() }
+
+  private fun computeStats(charId: Long, def: de.fiereu.openmmo.pokemon.SpeciesDef, mon: de.fiereu.openmmo.common.Pokemon): de.fiereu.openmmo.server.game.battle.ComputedStats {
+    val mode = classicMode.getMode(charId)
+    return when {
+      GameMode.isGen1(mode) -> Gen1StatCalculator.computeAll(def, mon, splitSpecial = false)
+      GameMode.isGen2(mode) -> Gen1StatCalculator.computeAll(def, mon, splitSpecial = true)
+      else -> StatCalculator.computeAll(def, mon)
+    }
+  }
 
   private val pendingLearns = ConcurrentHashMap<Long, PendingMoveLearn>()
 
@@ -253,7 +266,7 @@ constructor(
         session.send(notice("Your party has a species the battle data does not cover yet."))
         return null
       }
-      party += BattleMonState(mon.id, def, index, mon, StatCalculator.computeAll(def, mon))
+      party += BattleMonState(mon.id, def, index, mon, computeStats(charId, def, mon))
     }
     if (party.all { it.fainted }) {
       session.send(notice("All of your monsters have fainted."))
@@ -289,10 +302,10 @@ constructor(
               spd = spec.iv
             }
         val fixed = rolled.copy(iVs = ivs)
-        rolled = fixed.copy(hp = StatCalculator.computeAll(def, fixed).hp.toShort())
+        rolled = fixed.copy(hp = computeStats(charId, def, fixed).hp.toShort())
       }
       enemies +=
-          BattleMonState(rolled.id, def, null, rolled, StatCalculator.computeAll(def, rolled))
+          BattleMonState(rolled.id, def, null, rolled, computeStats(charId, def, rolled))
     }
     log.info {
       "Starting battle for char=$charId (${stored.info.name}) against " +
